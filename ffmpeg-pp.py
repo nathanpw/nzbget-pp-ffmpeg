@@ -141,12 +141,12 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
         # retryFailure = 1 for no retries or 0 to skip ffmpeg transcoding.
         retryFailure=2
         convertDTS='true'
-        print ("[INFO] Post-Process: Option variables set.")
+        print ("[INFO] Option variables set.")
     else:
         print ("[INFO] Script triggered from NZBGet (11.0 or later).")
         # Check if destination directory exists (important for reprocessing of history items)
         if not os.path.isdir(os.environ['NZBPP_DIRECTORY']):
-            print ("[ERROR] Post-Process: Nothing to post-process: destination directory", os.environ['NZBPP_DIRECTORY'], "doesn't exist")
+            print ("[ERROR] Nothing to post-process: destination directory", os.environ['NZBPP_DIRECTORY'], "doesn't exist")
             sys.exit(POSTPROCESS_ERROR)
         process_directory=os.environ['NZBPP_DIRECTORY']
         # Set the option variables.
@@ -163,7 +163,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
             convertDTS = False
         else:
             convertDTS = True
-        print ("[INFO] Post-Process: Option variables set.")
+        print ("[INFO] Option variables set.")
 
     # Make sure the extensions to check starts with a period.
     extensionsToProcess = []
@@ -224,7 +224,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
         elif width <= 3840:
             crf=uhdCRF
         else:
-            print ("[ERROR] Post-Process: Could not set crf for video with height:", height, ", and width:", width)
+            print ("[ERROR] Could not set crf for video with height:", height, ", and width:", width)
             sys.exit(POSTPROCESS_ERROR)
         return crf
 
@@ -239,11 +239,11 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
 
     # Get all the files we will need to process and the stream details.
     files_to_process = {}
-    print ("[INFO] Post-Process: Walking directory:", process_directory)
+    print ("[INFO] Walking directory:", process_directory)
     for dir_path, dir_names, file_names in os.walk(process_directory):
         for file in file_names:
             skip = False
-            print ("[INFO] Post-Process: Checking file:", file)
+            print ("[INFO] Checking file:", file)
             file_path, file_name, file_extension = getFilePathinfo(file)
             fullfile_path=os.path.join(dir_path, file)
             if file_extension in extensionsToProcess:
@@ -255,16 +255,16 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                 # If there is more then 1 or no video stream, or it's already in
                 # hevc, don't process the file.
                 if (len(files_to_process[fullfile_path]['video_streams']) != 1):
-                    print ("[WARNING] Post-Process: Skipping as no, or more then one video stream found in:", file)
+                    print ("[WARNING] Skipping as no, or more then one video stream found in:", file)
                     skip = True;
                 elif files_to_process[fullfile_path]['video_streams'][0]['codec_name'] == 'hevc':
-                    print("[INFO] Post-Process: Skipping file (already in hevc):", file)
+                    print("[INFO] Skipping file (already in hevc):", file)
                     skip = True;
             if skip:
                 files_to_process.pop(fullfile_path)
-            print ("[INFO] Post-Process: Found", fullfile_path, "to be processed.")
+            print ("[INFO] Found", fullfile_path, "to be processed.")
 
-    print ("[INFO] Post-Process: found", len(files_to_process), "files to process.")
+    print ("[INFO] found", len(files_to_process), "files to process.")
 
     # Process files individually for transcoding.
     for file, file_data in files_to_process.items():
@@ -288,7 +288,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                     # converted?
                     # TODO: Test and transcode only the dts streams?
                     if len(audio) > num_DTS and num_DTS != 0:
-                        print("[WARNING] Post-Process: DTS conversion to EAC flagged with more then one audio stream for file:", file)
+                        print("[WARNING] DTS conversion to EAC flagged with more then one audio stream for file:", file)
         # Select all streams.
         kwargs['map']='0'
         # Convert the video stream to a x265 mkv.
@@ -299,7 +299,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
         # Execute FFmpeg
         for attempt in range(retryFailure):
             try:
-                print("[INFO] Post-Process: Transcoding to file:", file_data['converted_file'])
+                print("[INFO] Transcoding to file:", file_data['converted_file'])
                 out, err = ( ffmpeg
                     .input(file)
                     .output(file_data['converted_file'], **kwargs)
@@ -310,13 +310,13 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                 # Uncomment for troubleshooting? I found `sudo dmesg` to be
                 # better, particularly if ffmpeg is segfaulting.
                 #print(e.stderr, file=sys.stderr)
-                print ("[ERROR] Post-Process: ffmpeg error transcoding file:", file_data['converted_file'])
+                print ("[ERROR] ffmpeg error transcoding file:", file_data['converted_file'])
             else:
                 break
         else:
-            print ("[ERROR] Post-Process: ffmpeg transcoding failed after", retryFailure, "attempts for file:", file)
+            print ("[ERROR] ffmpeg transcoding failed after", retryFailure, "attempts for file:", file)
             file_data['failed'] = True
-        print("[INFO] Post-Process: Transcoding completed for file:", file_data['converted_file'])
+        print("[INFO] Transcoding completed for file:", file_data['converted_file'])
 
     # Check if files were processed successfully and move or clean them up.
     for file, file_data in files_to_process.items():
@@ -330,7 +330,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
         elif file_data['converted_file'] != "":
             # TODO: Find a better way to update just the stream size. Instead of
             # remuxing/copying the whole file with MKVToolNix.
-            print("[INFO] Post-Process: Remuxing to update metadata for file:", file_data['converted_file'])
+            print("[INFO] Remuxing to update metadata for file:", file_data['converted_file'])
             tmp_mkv = getNewFileName(file_data['converted_file'])
             remux_mkv = MKVFile(file_data['converted_file'])
             remux_mkv.mux(tmp_mkv, silent=True)
@@ -345,7 +345,7 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
             # then the minimum, delete it.
             if (new_size/old_size) > (maxPercent/100) or (new_size/old_size) < (minPercent/100):
                 #percentage = str(new_size/old_size*100)
-                print("[WARNING] Post-Process: Video is {:.2f}".format(new_size/old_size*100), "% of original and will be removed:", file_data['converted_file'])
+                print("[WARNING] Video is {:.2f}".format(new_size/old_size*100), "% of original and will be removed:", file_data['converted_file'])
                 os.remove(file_data['converted_file'])
             else:
                 # Maintain the file modifed and accessed dates.
@@ -359,9 +359,9 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                     accessed = old_dates['accessed']
                 )
                 # Move the new file in place.
-                print("[INFO] Post-Process: Removing file:", file)
+                print("[INFO] Removing file:", file)
                 os.remove(file)
-                print("[INFO] Post-Process: Moving file:", file_data['converted_file'], "to: ", file)
+                print("[INFO] Moving file:", file_data['converted_file'], "to: ", file)
                 os.rename(file_data['converted_file'], file)
 
 
