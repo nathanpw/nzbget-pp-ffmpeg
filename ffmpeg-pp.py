@@ -334,7 +334,6 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
             tmp_mkv = getNewFileName(file_data['converted_file'])
             remux_mkv = MKVFile(file_data['converted_file'])
             remux_mkv.mux(tmp_mkv, silent=True)
-            print("[INFO] Post-Process: Remuxing to update metadata for file:", file_data['converted_file'])
             os.remove(file_data['converted_file'])
             os.rename(tmp_mkv, file_data['converted_file'])
             # Get the new video stream size.
