@@ -93,6 +93,7 @@ import os
 import sys
 import ffmpeg
 import filedate
+import subprocess
 from pymkv import MKVFile
 # for printing Python dictionaries in a human-readable way
 from pprint import pprint
@@ -237,6 +238,65 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
             new_file = getNewFileName(file, counter)
         return os.path.join(file_path, new_file)
 
+    # Helper function to remux file with MKVToolNix.
+    def remux(file):
+        print("[INFO] Remuxing to update metadata for file:", file)
+        tmp_mkv = getNewFileName(file)
+        # Pymkv doesn't seem to work with mp4 input files https://pymkv.shel.dev/en/stable/pymkv/MKVFile.html#pymkv.MKVFile
+        # So we will just run mkvmerge as a sub process.
+        subprocess.run(["mkvmerge", file, "-o", tmp_mkv])
+        os.remove(file)
+        os.rename(tmp_mkv, file)
+
+    def getFileDates(file):
+        # Return the files dates in a dict.
+        file_date = filedate.File(file)
+        dates = file_date.get()
+        return dates
+
+    def setFileDates(file, dates):
+        new_file_date = filedate.File(file)
+        new_dates = new_file_date.get()
+        new_file_date.set(
+            created = new_dates['created'],
+            modified = dates['modified'],
+            accessed = dates['accessed']
+        )
+
+    # Check if files were processed successfully and move or clean them up.
+    def postProcess(file, file_data):
+        # Remove failed files and clear the converted file name.
+        # If ffmpeg failed and the new file exists, remove it.
+        if file_data['failed'] and file_data['converted_file'] != "" and os.path.exists(file_data['converted_file']):
+            os.remove(file_data['converted_file'])
+            file_data['converted_file'] = ""
+        # If ffmpeg was successful, remove the old file and replace it with the
+        # new. Keeping the same modified and accessed dates.
+        elif file_data['converted_file'] != "":
+            # TODO: Find a better way to update just the stream size. Instead of
+            # remuxing/copying the whole file with MKVToolNix.
+            remux(file_data['converted_file'])
+            # Get the new video stream size.
+            stream_data, video_streams, audio_streams = getStreams(file_data['converted_file'])
+            new_vid_streams = video_streams
+            old_size = int(file_data['video_streams'][0]['tags']['NUMBER_OF_BYTES'])
+            new_size = int(new_vid_streams[0]['tags']['NUMBER_OF_BYTES'])
+            # If the transcoded file is larger then the allowable max or smaller
+            # then the minimum, delete it.
+            if (new_size/old_size) > (maxPercent/100) or (new_size/old_size) < (minPercent/100):
+                #percentage = str(new_size/old_size*100)
+                print("[WARNING] Video is {:.2f}".format(new_size/old_size*100), "% of original and will be removed:", file_data['converted_file'])
+                os.remove(file_data['converted_file'])
+            else:
+                # Maintain the file modifed and accessed dates.
+                old_dates = getFileDates(file)
+                setFileDates(file_data['converted_file'], old_dates)
+                # Move the new file in place.
+                print("[INFO] Removing file:", file)
+                os.remove(file)
+                print("[INFO] Moving file:", file_data['converted_file'], "to: ", file)
+                os.rename(file_data['converted_file'], file)
+
     # Get all the files we will need to process and the stream details.
     files_to_process = {}
     print ("[INFO] Walking directory:", process_directory)
@@ -252,6 +312,17 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                 files_to_process[fullfile_path]['stream_data'] = stream_data
                 files_to_process[fullfile_path]['video_streams'] = video_streams
                 files_to_process[fullfile_path]['audio_streams'] = audio_streams
+                # If the video size tag doesn't exist, remux the video to get it.
+                if 'tags' not in video_streams[0] or 'NUMBER_OF_BYTES' not in video_streams[0]['tags']:
+                    # TODO: Find a better way to update just the stream size. Instead of
+                    # remuxing/copying the whole file with MKVToolNix.
+                    file_dates = getFileDates(fullfile_path)
+                    remux(fullfile_path)
+                    setFileDates(fullfile_path, file_dates)
+                    stream_data, video_streams, audio_streams = getStreams(fullfile_path)
+                    files_to_process[fullfile_path]['stream_data'] = stream_data
+                    files_to_process[fullfile_path]['video_streams'] = video_streams
+                    files_to_process[fullfile_path]['audio_streams'] = audio_streams
                 # If there is more then 1 or no video stream, or it's already in
                 # hevc, don't process the file.
                 if (len(files_to_process[fullfile_path]['video_streams']) != 1):
@@ -262,8 +333,6 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                     skip = True;
             if skip:
                 files_to_process.pop(fullfile_path)
-            print ("[INFO] Found", fullfile_path, "to be processed.")
-
     print ("[INFO] found", len(files_to_process), "files to process.")
 
     # Process files individually for transcoding.
@@ -317,52 +386,6 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
             print ("[ERROR] ffmpeg transcoding failed after", retryFailure, "attempts for file:", file)
             file_data['failed'] = True
         print("[INFO] Transcoding completed for file:", file_data['converted_file'])
-
-    # Check if files were processed successfully and move or clean them up.
-    for file, file_data in files_to_process.items():
-        # Remove failed files and clear the converted file name.
-        # If ffmpeg failed and the new file exists, remove it.
-        if file_data['failed'] and file_data['converted_file'] != "" and os.path.exists(file_data['converted_file']):
-            os.remove(file_data['converted_file'])
-            file_data['converted_file'] = ""
-        # If ffmpeg was successful, remove the old file and replace it with the
-        # new. Keeping the same modified and accessed dates.
-        elif file_data['converted_file'] != "":
-            # TODO: Find a better way to update just the stream size. Instead of
-            # remuxing/copying the whole file with MKVToolNix.
-            print("[INFO] Remuxing to update metadata for file:", file_data['converted_file'])
-            tmp_mkv = getNewFileName(file_data['converted_file'])
-            remux_mkv = MKVFile(file_data['converted_file'])
-            remux_mkv.mux(tmp_mkv, silent=True)
-            os.remove(file_data['converted_file'])
-            os.rename(tmp_mkv, file_data['converted_file'])
-            # Get the new video stream size.
-            stream_data, video_streams, audio_streams = getStreams(file_data['converted_file'])
-            new_vid_streams = video_streams
-            old_size = int(file_data['video_streams'][0]['tags']['NUMBER_OF_BYTES'])
-            new_size = int(new_vid_streams[0]['tags']['NUMBER_OF_BYTES'])
-            # If the transcoded file is larger then the allowable max or smaller
-            # then the minimum, delete it.
-            if (new_size/old_size) > (maxPercent/100) or (new_size/old_size) < (minPercent/100):
-                #percentage = str(new_size/old_size*100)
-                print("[WARNING] Video is {:.2f}".format(new_size/old_size*100), "% of original and will be removed:", file_data['converted_file'])
-                os.remove(file_data['converted_file'])
-            else:
-                # Maintain the file modifed and accessed dates.
-                old_file_date = filedate.File(file)
-                old_dates = old_file_date.get()
-                new_file_date = filedate.File(file_data['converted_file'])
-                new_dates = new_file_date.get()
-                new_file_date.set(
-                    created = new_dates['created'],
-                    modified = old_dates['modified'],
-                    accessed = old_dates['accessed']
-                )
-                # Move the new file in place.
-                print("[INFO] Removing file:", file)
-                os.remove(file)
-                print("[INFO] Moving file:", file_data['converted_file'], "to: ", file)
-                os.rename(file_data['converted_file'], file)
-
+        postProcess(file, file_data)
 
     sys.exit(POSTPROCESS_SUCCESS)
