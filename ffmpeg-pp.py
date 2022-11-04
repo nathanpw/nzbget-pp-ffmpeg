@@ -292,10 +292,17 @@ if skipNZBChecks or 'NZBOP_SCRIPTDIR' in os.environ and not os.environ['NZBOP_VE
                 old_dates = getFileDates(file)
                 setFileDates(file_data['converted_file'], old_dates)
                 # Move the new file in place.
+                file_path, file_name, file_extension = getFilePathinfo(file)
+                # If the original file isn't an mkv, make sure the
+                # transcoded/new file is.
+                if file_extension != '.mkv':
+                    old_file = os.path.join(file_path, file_name) + '.mkv'
+                else:
+                    old_file = file
                 print("[INFO] Removing file:", file)
                 os.remove(file)
-                print("[INFO] Moving file:", file_data['converted_file'], "to: ", file)
-                os.rename(file_data['converted_file'], file)
+                print("[INFO] Moving file:", file_data['converted_file'], "to: ", old_file)
+                os.rename(file_data['converted_file'], old_file)
 
     # Get all the files we will need to process and the stream details.
     files_to_process = {}
